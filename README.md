@@ -1,20 +1,63 @@
-# Historical Funding Rates Fetcher
+# 资费数据下载与处理流程说明
 
-This repository contains a Python script along with associated data for retrieving and analyzing historical funding rates from various cryptocurrency exchanges. 
+## 系统概述
 
-Discover more about this project and explore the insights in the article: 
-[My Insights into the Impact of Funding Rates](https://viktoriatsybko.substack.com/)
+该系统用于下载和处理交易标的的历史和实时资金费率数据，主要包含三个Python脚本文件：
 
-## Repository Contents
-- **`main.py`**: A Python script to fetch historical funding rates. It includes the following features:
-  - **Support for Multiple Exchanges**: Binance, Bybit, dYdX, Gate, HTX, Kucoin, MEXC.
-  - **Customizable Fetching**: Users can specify parameters such as the exchange, trading pair, and the time range for data retrieval. Currently only USDT margined pairs are supported
-  - **Data Export**: Results are saved to a CSV file for easy analysis.
-- **`exchanges/`**:Python modules for interacting with the APIs of various exchanges. Each module (*.py file in the exchanges directory) corresponds to a specific exchange and handles API communication and data parsing.
-- **`data/`**: Directory containing CSV files with funding rates for BTC and ETH (USDT or USD margined) covering the period from 2020 to 2023 for multiple exchanges. Each CSV file includes the following columns:
+1. `1_downloder_history.py` - 历史数据下载器
+2. `2_downloder_rt.py` - 实时数据下载器
+3. `3_data_handler.py` - 数据处理程序
 
-    | Column        | Description   |
-    |---------------|---------------|
-    | Symbol        | The trading pair. |
-    | Date          | The date of the funding rate settlement. Typically every 8 hours or 24h for dYdX. |
-    | Funding Rate  | The funding rate in decimal format. Multiply by 100 to get the percentage. |
+## 文件功能说明
+
+### 1_downloder_history.py
+
+- ​**功能**：通过调用历史接口下载历史数据
+- ​**数据限制**：只能获取到前一天的数据
+- ​**存储位置**：`data`文件夹
+- ​**文件命名**：`symbolname+funding_history.csv`
+- ​**注意事项**：即使标的已下架，仍会生成对应的CSV文件，并可能推送重复数据（如AGIX-USDT持续推送0.0001000）(忽略)
+
+### 2_downloder_rt.py
+
+- ​**功能**：通过调用实时接口下载实时数据
+- ​**数据限制**：只能获取到当前时间的数据
+- ​**存储位置**：`data_rt`文件夹
+- ​**文件命名**：`symbolname+funding_realtime.csv`
+- ​**运行频率**：每5分钟运行一次
+
+### 3_data_handler.py
+
+- ​**功能**：
+  1. 处理历史数据，将历史数据转换为5分钟频率的DataFrame
+  2. 处理实时数据，将实时数据增量更新到历史数据中
+  3. 执行数据填充、清洗和频率转换
+
+- ​**输出文件**：`dubug_data.funding_5min_combined.parquet`
+
+## 配置与运行步骤
+
+### 初始设置，下载任务
+
+1. 一次性运行`1_downloder_history.py`下载截止到T-1日的历史数据
+2. 设置定时任务，每隔5分钟运行`2_downloder_rt.py`下载实时数据
+
+### 数据处理
+
+3. 首次运行`3_data_handler.py`：
+   - 设置`first_run = False`
+   - 程序将处理T-1日之前的历史数据 + T日当前时刻的实时数据
+   - 输出文件：`dubug_data.funding_5min_combined.parquet`
+
+4. 后续持续运行：
+   - 设置`first_run = True`
+   - 配置5分钟运行一次的定时任务执行`3_data_handler.py`
+
+## 定时任务配置
+
+```bash
+# 每5分钟运行实时数据下载器
+*/5 * * * * /usr/bin/python3 /path/to/2_downloder_rt.py
+
+# 每5分钟运行数据处理程序
+*/5 * * * * /usr/bin/python3 /path/to/3_data_handler.py
